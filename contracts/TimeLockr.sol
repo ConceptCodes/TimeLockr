@@ -4,6 +4,7 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // TODO: create a mapping of users to their 'activity' and find a way to add those power users to whitelist
+// TODO: add validations for invalid addresses
 
 /**
  * @title TimeLockr
@@ -29,7 +30,7 @@ contract TimeLockr is Ownable {
     error EmptyMessage(address _user, uint256 _timestamp);
 
     /// @dev Emitted if you try to unlock a message that is still locked.
-    error MessageStillLocked(bytes32 messageId);
+    error MessageStillLocked(bytes32 messageId, uint256 _timestamp);
 
     uint256 public FEE = 1 ether;
     uint256 public MIN_LOCK_TIME_IN_SECONDS = 60; // 1 minute
@@ -41,13 +42,12 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Mapping of messages.
-     * @dev we set this to private so that only the contract can access it.
-     * @dev every user will have a mapping of messages with [messageId => Message]
+     * @dev We set this to public so that the dApp can display your messages.
+     * @dev Every user will have a mapping of messages with [messageId => Message]
      */
-    mapping(address => mapping(bytes32 => Message)) private messages;
+    mapping(address => mapping(bytes32 => Message)) public messages;
 
-    /// @notice Whitelisted addresses that don't need to pay the fee.
-    address[] public whitelist;
+    address[] public whitelist; // Whitelisted addresses that don't need to pay the fee.
 
     /**
      * @notice Emitted when a message is locked.
@@ -70,20 +70,20 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Emitted when fee is updated.
-     * @param _oldFee The old fee.
+     * @param _old The old fee.
      * @param _fee The new fee.
      * @param _timestamp The timestamp of when the fee was updated.
      */
-    event FeeUpdated(uint256 _oldFee, uint256 _fee, uint256 _timestamp);
+    event FeeUpdated(uint256 _old, uint256 _fee, uint256 _timestamp);
 
     /**
      * @notice Emitted when the minimum lock up time is updated.
-     * @param _prevLockTime The old lock up time.
+     * @param _prev The old lock up time.
      * @param _lockTime The new lock up time.
      * @param _timestamp The timestamp of when the minimum lock time was updated.
      */
     event MinimumLockUpTimeUpdated(
-        uint256 _prevLockTime,
+        uint256 _prev,
         uint256 _lockTime,
         uint256 _timestamp
     );
@@ -149,10 +149,10 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Unlock a message.
-     * @param _messageId The id of the message.
      * @dev The message is deleted from the mapping after it is unlocked.
      * @dev We return the message so that it can be decrypted
      *      with the users private key on the dApp side.
+     * @param _messageId The id of the message.
      * @return encryptedMessage The encrypted message.
      */
     function unlockMessage(
@@ -165,7 +165,7 @@ contract TimeLockr is Ownable {
             emit MessageUnlocked(msg.sender, block.timestamp);
             return message.encryptedMessage;
         } else {
-            revert MessageStillLocked(_messageId);
+            revert MessageStillLocked(_messageId, block.timestamp);
         }
     }
 
