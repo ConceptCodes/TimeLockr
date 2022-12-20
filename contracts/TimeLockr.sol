@@ -101,6 +101,7 @@ contract TimeLockr is Ownable {
     /**
      * @notice Lock up a message.
      * @dev The message is encrypted with their public key from the dApp.
+     * @dev We go through our validaitons and then store the message.
      * @param _user The address of the user.
      * @param _message The message to lock up.
      * @param _timeLocked The time the message is locked for.
@@ -111,8 +112,6 @@ contract TimeLockr is Ownable {
         uint256 _timeLocked
     ) public payable {
         bool whitelisted = false;
-
-        // check if the sender is whitelisted
         for (uint256 i = 0; i < whitelist.length; i++) {
             if (whitelist[i] == msg.sender) {
                 whitelisted = true;
@@ -120,7 +119,6 @@ contract TimeLockr is Ownable {
             }
         }
 
-        // if not, check if they sent enough funds
         if (!whitelisted && msg.sender != owner()) {
             if (msg.value >= FEE) {
                 payable(owner()).transfer(msg.value);
@@ -129,18 +127,14 @@ contract TimeLockr is Ownable {
             }
         }
 
-        // check if the lock time is long enough
         if (_timeLocked < MIN_LOCK_TIME_IN_SECONDS) {
             revert InvalidLockTime(_timeLocked);
         }
 
-        // check if the message is empty
         if (bytes(_message).length == 0) {
             revert EmptyMessage(_user, block.timestamp);
         }
 
-        // create a unique id for the message
-        // we space out the dyanmic data inorder to reduce the chance of a collision
         bytes32 messageId = keccak256(
             abi.encodePacked(_user, block.timestamp, _message, block.coinbase)
         );
