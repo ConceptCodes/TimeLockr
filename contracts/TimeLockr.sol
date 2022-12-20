@@ -3,6 +3,8 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+// TODO: create a mapping of users to their 'activity' and find a way to add those power users to whitelist
+
 /**
  * @title TimeLockr
  * @author conceptcodes.eth
@@ -154,6 +156,9 @@ contract TimeLockr is Ownable {
     /**
      * @notice Unlock a message.
      * @param _messageId The id of the message.
+     * @dev The message is deleted from the mapping after it is unlocked.
+     * @dev We return the message so that it can be decrypted
+     *      with the users private key on the dApp side.
      * @return encryptedMessage The encrypted message.
      */
     function unlockMessage(
@@ -218,5 +223,20 @@ contract TimeLockr is Ownable {
      */
     function addToWhitelist(address _address) public onlyOwner {
         whitelist.push(_address);
+    }
+
+    /**
+     * @notice Remove an address from the whitelist.
+     * @param _address The address to remove.
+     * @dev We use onlyOwner modifier to restrict access
+     */
+    function removeFromWhitelist(address _address) public onlyOwner {
+        for (uint256 i = 0; i < whitelist.length; i++) {
+            if (whitelist[i] == _address) {
+                whitelist[i] = whitelist[whitelist.length - 1];
+                whitelist.pop();
+                break;
+            }
+        }
     }
 }
