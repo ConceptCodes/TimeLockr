@@ -57,10 +57,8 @@ describe("TimeLockr", function () {
       const message = "Hello World";
       const duration = minLockTime;
 
-      const amount = ethers.utils.parseEther(`${fee + 1}`);
-
       const tx = await contract.lockMessage(message, duration, {
-        value: amount,
+        value: fee,
       });
 
       const data = await ethers.provider.getTransactionReceipt(tx.hash);
@@ -136,7 +134,7 @@ describe("TimeLockr", function () {
 
   //     await expect(contract)
   //       .to.emit(contract, "MessageUnlocked")
-  //       .withArgs(anyValue(), tx2.from, tx2.timestamp);
+  //       .withArgs(tx2.from, tx2.timestamp);
   //   });
   // });
 });
