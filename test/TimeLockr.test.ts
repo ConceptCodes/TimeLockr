@@ -11,14 +11,22 @@ describe("TimeLockr", function () {
     const balance = await ethers.provider.getBalance(contract.address);
     const fee = await contract.getFee();
     const minLockTime = await contract.getMinimumLockTime();
+    const whitelist = await contract.getWhitelist();
 
-    return { contract, owner, otherAccount, balance, fee, minLockTime };
+    return {
+      contract,
+      owner,
+      otherAccount,
+      balance,
+      fee,
+      minLockTime,
+      whitelist,
+    };
   }
 
   describe("Deployment", function () {
-    it("Should set the right owner", async function () {
+    it("Should set deployer to owner", async function () {
       const { contract, owner } = await loadFixture(deployTimeLockr);
-
       expect(await contract.owner()).to.equal(owner.address);
     });
 
@@ -26,115 +34,175 @@ describe("TimeLockr", function () {
       const { balance } = await loadFixture(deployTimeLockr);
       expect(balance).to.equal(ethers.utils.parseEther("0"));
     });
+
+    it("Whitelist should be empty", async function () {
+      const { whitelist } = await loadFixture(deployTimeLockr);
+      expect(whitelist).to.be.empty;
+    });
   });
 
   describe("Locking A Message", function () {
-    it("should throw error if the fee is not paid", async function () {
-      const { contract, minLockTime } = await loadFixture(deployTimeLockr);
-      const message = "Hello World";
+    describe("Fee", function () {
+      it("Throw Error: Insufficient Funds/No Funds", async function () {
+        const { contract, minLockTime, otherAccount } = await loadFixture(
+          deployTimeLockr
+        );
+        const message = "Hello World";
+        const duration = minLockTime;
+        const address = otherAccount.address;
 
-      await expect(
-        contract.lockMessage(message, minLockTime)
-      ).to.be.revertedWithCustomError(contract, "InsufficientFunds");
-    });
-
-    it("should throw an error if lock up period is too short", async function () {
-      const { contract, fee, minLockTime } = await loadFixture(deployTimeLockr);
-      const message = "Hello World";
-      const duration = minLockTime - (1 * 60);
-
-      const amount = ethers.utils.parseEther(`${fee}`);
-
-      await expect(
-        contract.lockMessage(message, duration, {
-          value: amount,
-        })
-      ).to.be.revertedWithCustomError(contract, "InvalidLockTime");
-    });
-
-    it("should allow you to lock a message", async function () {
-      const { contract, minLockTime, fee } = await loadFixture(deployTimeLockr);
-      const message = "Hello World";
-      const duration = minLockTime;
-
-      const tx = await contract.lockMessage(message, duration, {
-        value: fee,
+        await expect(
+          contract.connect(otherAccount).lockMessage(address, message, duration)
+        ).to.be.revertedWithCustomError(contract, "InsufficientFunds");
       });
 
-      const data = await ethers.provider.getTransactionReceipt(tx.hash);
-      const timestamp = await ethers.provider.getBlock(data.blockNumber);
+      it("Throw Error: Insufficient Funds/Not Enough Funds", async function () {
+        const { contract, minLockTime, otherAccount } = await loadFixture(
+          deployTimeLockr
+        );
+        const message = "Hello World";
+        const duration = minLockTime;
+        const address = otherAccount.address;
 
-      const messageId = ethers.utils.solidityKeccak256(
-        ["address", "uint256", "string"],
-        [tx.from, timestamp.timestamp, message]
-      );
+        const amount = ethers.utils.parseEther("0.5");
 
-      await expect(contract)
-        .to.emit(contract, "MessageLocked")
-        .withArgs(messageId, duration);
+        await expect(
+          contract
+            .connect(otherAccount)
+            .lockMessage(address, message, duration, {
+              value: amount,
+            })
+        ).to.be.revertedWithCustomError(contract, "InsufficientFunds");
+      });
+
+      it("Owner: Bypass Fee/Lock Message", async function () {
+        const { contract, minLockTime, owner } = await loadFixture(
+          deployTimeLockr
+        );
+        const message = "Hello World";
+
+        const tx = await contract.lockMessage(
+          owner.address,
+          message,
+          minLockTime
+        );
+        const data = await ethers.provider.getTransactionReceipt(tx.hash);
+        const timestamp = await ethers.provider.getBlock(data.blockNumber);
+
+        const messageId = ethers.utils.solidityKeccak256(
+          ["address", "uint256", "string", "address", "uint256"],
+          [owner.address, timestamp.timestamp, message, tx.from, minLockTime]
+        );
+
+        await expect(contract)
+          .to.emit(contract, "MessageLocked")
+          .withArgs(owner.address, messageId, timestamp.timestamp);
+      });
+
+      // it("Owner: Lock Message for other address", async function () {
+      //   const { contract, minLockTime, otherAccount } = await loadFixture(
+      //     deployTimeLockr
+      //   );
+      //   const message = "Hello World";
+      //   const address = otherAccount.address;
+
+      //   const tx = await contract.lockMessage(address, message, minLockTime);
+      //   const data = await ethers.provider.getTransactionReceipt(tx.hash);
+      //   const timestamp = await ethers.provider.getBlock(data.blockNumber);
+
+      //   const messageId = ethers.utils.solidityKeccak256(
+      //     ["address", "uint256", "string", "address", "uint256"],
+      //     [address, timestamp.timestamp, message, tx.from, minLockTime]
+      //   );
+
+      //   await expect(contract)
+      //     .to.emit(contract, "MessageLocked")
+      //     .withArgs(address, messageId, timestamp.timestamp);
+      // });
+
+      // it("Owner: Pay Fee/Lock Message", async function () {
+      //   const { contract, minLockTime, fee, owner } = await loadFixture(
+      //     deployTimeLockr
+      //   );
+      //   const message = "Hello World";
+
+      //   const tx = await contract.lockMessage(
+      //     owner.address,
+      //     message,
+      //     minLockTime,
+      //     {
+      //       value: fee,
+      //     }
+      //   );
+      //   const data = await ethers.provider.getTransactionReceipt(tx.hash);
+      //   const timestamp = await ethers.provider.getBlock(data.blockNumber);
+
+      //   const messageId = ethers.utils.solidityKeccak256(
+      //     ["address", "uint256", "string", "address", "uint256"],
+      //     [owner.address, timestamp.timestamp, message, tx.from, minLockTime]
+      //   );
+
+      //   await expect(contract)
+      //     .to.emit(contract, "MessageLocked")
+      //     .withArgs(owner.address, messageId, timestamp.timestamp);
+      // });
+
+      // it("Whitelisted: bypass fee & lock message", async function () {
+      //   const { contract, minLockTime, fee, owner, otherAccount } =
+      //     await loadFixture(deployTimeLockr);
+      //   const message = "Hello World";
+      //   const duration = minLockTime;
+      //   const address = otherAccount.address;
+
+      //   await contract.addToWhitelist(address, {
+      //     from: owner.address,
+      //   });
+
+      //   const tx = await contract.lockMessage(address, message, duration);
+
+      //   const data = await ethers.provider.getTransactionReceipt(tx.hash);
+      //   const timestamp = await ethers.provider.getBlock(data.blockNumber);
+
+      //   const messageId = ethers.utils.solidityKeccak256(
+      //     ["address", "uint256", "string", "uint256"],
+      //     [address, duration, message, tx.coinbase]
+      //   );
+
+      //   await expect(contract)
+      //     .to.emit(contract, "MessageLocked")
+      //     .withArgs(address, messageId, timestamp.timestamp);
+      // });
+
+      // it("Pay Fee: lock message", async function () {
+      //   const { contract, minLockTime, fee, otherAccount } = await loadFixture(
+      //     deployTimeLockr
+      //   );
+      //   const message = "Hello World";
+      //   const duration = minLockTime;
+      //   const address = otherAccount.address;
+
+      //   const tx = await contract.lockMessage(address, message, duration, {
+      //     value: fee,
+      //   });
+
+      //   const data = await ethers.provider.getTransactionReceipt(tx.hash);
+      //   const timestamp = await ethers.provider.getBlock(data.blockNumber);
+
+      //   const messageId = ethers.utils.solidityKeccak256(
+      //     ["address", "uint256", "string", "uint256"],
+      //     [address, duration, message, tx.coinbase]
+      //   );
+
+      //   await expect(contract)
+      //     .to.emit(contract, "MessageLocked")
+      //     .withArgs(address, messageId, timestamp.timestamp);
+      // });
     });
+
+    describe("Lockup Time", function () {});
   });
 
-  // describe("Unlocking A Message", function () {
-  //   it("should throw an error if messageId does not exist", async function () {
-  //     const { contract } = await loadFixture(deployTimeLockr);
+  // describe("Unlocking A Message", function () {});
 
-  //     const messageId = ethers.utils.solidityKeccak256(
-  //       ["address", "uint256", "string"],
-  //       ["hello", 1234567890, "world"]
-  //     );
-
-  //     await expect(contract.unlockMessage(messageId)).to.Throw;
-  //   });
-
-  //   it("should throw an error if the message is locked but the duration is not over", async function () {
-  //     const { contract } = await loadFixture(deployTimeLockr);
-  //     const message = "Hello World";
-  //     const duration = 3600;
-
-  //     const amount = ethers.utils.parseEther("2");
-
-  //     const tx = await contract.lockMessage(message, duration, {
-  //       value: amount,
-  //     });
-
-  //     const messageId = ethers.utils.solidityKeccak256(
-  //       ["address", "uint256", "string"],
-  //       [tx.from, tx.timestamp, message]
-  //     );
-
-  //     await expect(contract.unlockMessage(message)).to.Throw;
-
-  //     await expect(contract)
-  //       .to.emit(contract, "MessageStillLocked")
-  //       .withArgs(anyValue(), messageId);
-  //   });
-
-  //   it("should allow you to unlock a message", async function () {
-  //     const { contract, otherAccount } = await loadFixture(deployTimeLockr);
-  //     const message = "Hello World";
-  //     const duration = 360;
-
-  //     const amount = ethers.utils.parseEther("2");
-
-  //     const tx = await contract.lockMessage(message, duration, {
-  //       value: amount,
-  //     });
-
-  //     const messageId = ethers.utils.solidityKeccak256(
-  //       ["address", "uint256", "string"],
-  //       [tx.from, tx.timestamp, message]
-  //     );
-
-  //     await ethers.provider.send("evm_increaseTime", [duration]);
-
-  //     const tx2 = await contract.unlockMessage(messageId);
-
-  //     expect(tx2.data).to.equal(message);
-
-  //     await expect(contract)
-  //       .to.emit(contract, "MessageUnlocked")
-  //       .withArgs(tx2.from, tx2.timestamp);
-  //   });
-  // });
+  // describe("Access Control", function () {});
 });
