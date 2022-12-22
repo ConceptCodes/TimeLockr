@@ -29,7 +29,7 @@ contract TimeLockr is Ownable {
     error MessageStillLocked(bytes32 messageId, uint256 timestamp);
 
     uint256 public FEE = .5 ether;
-    uint256 public MIN_LOCK_TIME_IN_SECONDS = 60; // 1 minute
+    uint256 public MIN_LOCK_TIME_IN_SECONDS = 60;
 
     struct Message {
         string encryptedMessage;
@@ -38,7 +38,7 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Mapping of messages.
-     * @dev we set this to private so that only the contract can access it.
+     * @dev only accesible by the contract.
      * @dev every user will have a mapping of messages with [messageId => Message]
      */
     mapping(address => mapping(bytes32 => Message)) private vault;
@@ -108,10 +108,6 @@ contract TimeLockr is Ownable {
 
     constructor() {}
 
-    function getMinimumLockTime() public view returns (uint256) {
-        return MIN_LOCK_TIME_IN_SECONDS;
-    }
-
     /**
      * @notice Lock up a message.
      * @notice timeLocked < 1 day = base fee,
@@ -128,7 +124,6 @@ contract TimeLockr is Ownable {
         uint256 _timeLocked
     ) public payable {
         require(_user != address(0));
-
         bool whitelisted = false;
         for (uint256 i = 0; i < whitelist.length; i++) {
             if (whitelist[i] == msg.sender) {
@@ -136,8 +131,7 @@ contract TimeLockr is Ownable {
                 break;
             }
         }
-
-        if (!whitelisted || msg.sender != owner()) {
+        if (!whitelisted && msg.sender != owner()) {
             if (_timeLocked > 1 days) {
                 if (msg.value < FEE + ((_timeLocked / 1 days) * .25 ether)) {
                     revert InsufficientFunds(msg.value, block.timestamp);
@@ -148,20 +142,16 @@ contract TimeLockr is Ownable {
                 }
             }
         }
-
         if (bytes(_message).length == 0) {
             revert EmptyMessage(_user, block.timestamp);
         }
-
         bytes32 messageId = keccak256(
             abi.encodePacked(_user, block.timestamp, _message)
         );
-
         vault[_user][messageId] = Message({
             encryptedMessage: _message,
             timeLocked: block.timestamp + _timeLocked
         });
-
         emit MessageLocked(_user, messageId, block.timestamp);
     }
 
@@ -174,9 +164,7 @@ contract TimeLockr is Ownable {
      */
     function unlockMessage(bytes32 _messageId) public {
         Message memory message = vault[msg.sender][_messageId];
-
         if (block.timestamp >= message.timeLocked) {
-            delete vault[msg.sender][_messageId];
             emit MessageUnlocked(msg.sender, block.timestamp);
             messages[msg.sender].push(_messageId);
         } else {
