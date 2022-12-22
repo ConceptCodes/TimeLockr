@@ -110,8 +110,8 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Lock up a message.
-     * @notice  < 1 day = .5 Native Token 
- *              > 1 day = .5 Native Token + (.25 Native Token * days locked)
+     * @notice  < 1 day = .5 Native Token
+     *              > 1 day = .5 Native Token + (.25 Native Token * days locked)
      * @dev The message is encrypted with recipients public key from the dApp.
      * @dev We go through our validaitons and then store the message.
      * @param _user The address of the user.
@@ -165,8 +165,7 @@ contract TimeLockr is Ownable {
         if (block.timestamp >= message.timeLocked) {
             emit MessageUnlocked(msg.sender, block.timestamp);
             messages[msg.sender].push(_messageId);
-        } 
-        else revert MessageStillLocked(_messageId, block.timestamp);
+        } else revert MessageStillLocked(_messageId, block.timestamp);
     }
 
     /**
@@ -186,7 +185,7 @@ contract TimeLockr is Ownable {
     /**
      * @notice Get your messages.
      * @param _messageId The id of the message.
-     * @return message All unlocked messages 
+     * @return message All unlocked messages
      */
     function getMessage(
         bytes32 _messageId
