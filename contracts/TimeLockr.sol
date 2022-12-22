@@ -3,12 +3,12 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-// TODO: create a mapping of users to their 'activity' and find a way to add those power users to whitelist
+// TODO: create a mapping of users to their 'activity' and find a way to auto add those power users to whitelist
 
 /**
  * @title TimeLockr
- * @author conceptcodes.eth x jhilert.eth
- * @notice A simple smart contract to store encrypted messages on-chain for a lockup peroid.
+ * @author conceptcodes.eth x John Hillert
+ * @notice A simple smart contract to store & lock up encrypted messages on-chain.
  * @notice For this service you pay a small fee in the native token.
  * @dev The message is encrypted with the recipient's public key from the dApp.
  */
@@ -38,15 +38,15 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Mapping of messages.
-     * @dev only accesible by the contract.
-     * @dev every user will have a mapping of messages with [messageId => Message]
+     * @dev Only accesible by the contract.
+     * @dev Every user will have a mapping of messages with [messageId => Message]
      */
     mapping(address => mapping(bytes32 => Message)) private vault;
 
     /**
      * @notice Mapping of user messages.
-     * @dev we set this to public so that the dApp can access it.
-     * @dev every user will have an array of messageIds with [address => messageId[]]
+     * @dev We set this to public so that the dApp can access it.
+     * @dev Every user will have an array of messageIds with [address => messageId[]]
      */
     mapping(address => bytes32[]) public messages;
 
@@ -55,9 +55,9 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Emitted when a message is locked.
-     * @param user The address of the user.
+     * @param user The address of the recipient.
      * @param messageId The id of the message.
-     * @param timestamp The timestamp of when the message was locked.
+     * @param timestamp The timestamp of this event.
      */
     event MessageLocked(
         address indexed user,
@@ -68,7 +68,7 @@ contract TimeLockr is Ownable {
     /**
      * @notice Emitted when a message is unlocked.
      * @param user The address of the sender.
-     * @param timestamp The time the message was unlocked.
+     * @param timestamp The timestamp of this event.
      */
     event MessageUnlocked(address indexed user, uint256 timestamp);
 
@@ -76,7 +76,7 @@ contract TimeLockr is Ownable {
      * @notice Emitted when the fee is updated.
      * @param prevFee The old fee.
      * @param fee The new fee.
-     * @param timestamp The timestamp of when the fee was updated.
+     * @param timestamp The timestamp of this event.
      */
     event FeeUpdated(uint256 prevFee, uint256 fee, uint256 timestamp);
 
@@ -84,7 +84,7 @@ contract TimeLockr is Ownable {
      * @notice Emitted when the minimum lock up time is updated.
      * @param prevLockTime The old lock up time.
      * @param lockTime The new lock up time.
-     * @param timestamp The timestamp of when the minimum lock time was updated.
+     * @param timestamp The timestamp of this event.
      */
     event MinimumLockUpTimeUpdated(
         uint256 prevLockTime,
@@ -95,14 +95,14 @@ contract TimeLockr is Ownable {
     /**
      * @notice Emitted when a new address is added to the whitelist.
      * @param user The address that was added.
-     * @param timestamp The timestamp of when the address was added.
+     * @param timestamp The timestamp of this event.
      */
     event AddedToWhitelist(address user, uint256 timestamp);
 
     /**
      * @notice Emitted when an address is removed from the whitelist.
      * @param user The address that was removed.
-     * @param timestamp The timestamp of when the address was removed.
+     * @param timestamp The timestamp of this event.
      */
     event RemovedFromWhitelist(address user, uint256 timestamp);
 
@@ -110,13 +110,13 @@ contract TimeLockr is Ownable {
 
     /**
      * @notice Lock up a message.
-     * @notice timeLocked < 1 day = base fee,
-     *         timeLocked > 1 day = base fee + .25 matic * days locked
-     * @dev The message is encrypted with their public key from the dApp.
+     * @notice  < 1 day = .5 Native Token 
+ *              > 1 day = .5 Native Token + (.25 Native Token * days locked)
+     * @dev The message is encrypted with recipients public key from the dApp.
      * @dev We go through our validaitons and then store the message.
      * @param _user The address of the user.
-     * @param _message The message to lock up.
-     * @param _timeLocked The time the message is locked for.
+     * @param _message The encrypted message.
+     * @param _timeLocked The time the message should be locked for.
      */
     function lockMessage(
         address _user,
@@ -158,18 +158,15 @@ contract TimeLockr is Ownable {
     /**
      * @notice Unlock a message.
      * @param _messageId The id of the message.
-     * @dev The message is deleted from the mapping after it is unlocked.
-     * @dev We return the message so that it can be decrypted
-     *      with the users private key on the dApp side.
+     * @dev We add unlocked message to that users messages array.
      */
     function unlockMessage(bytes32 _messageId) public {
         Message memory message = vault[msg.sender][_messageId];
         if (block.timestamp >= message.timeLocked) {
             emit MessageUnlocked(msg.sender, block.timestamp);
             messages[msg.sender].push(_messageId);
-        } else {
-            revert MessageStillLocked(_messageId, block.timestamp);
-        }
+        } 
+        else revert MessageStillLocked(_messageId, block.timestamp);
     }
 
     /**
@@ -182,27 +179,26 @@ contract TimeLockr is Ownable {
         bytes32 _messageId
     ) public view returns (uint256 timeLeft) {
         Message memory message = vault[msg.sender][_messageId];
-        if (block.timestamp >= message.timeLocked) {
-            return 0;
-        } else {
-            return message.timeLocked - block.timestamp;
-        }
+        if (block.timestamp >= message.timeLocked) return 0;
+        else return message.timeLocked - block.timestamp;
     }
 
     /**
      * @notice Get your messages.
-     * @dev We verify that you own this message.
-     * @dev We check the messages mapping to only return unlocked messages
-     * @return messages all unlocked messages for the user.
+     * @param _messageId The id of the message.
+     * @return message All unlocked messages 
      */
-    function getMessages() public view returns (string[] memory) {
-        string[] memory unlockedMessages;
+    function getMessage(
+        bytes32 _messageId
+    ) public view returns (string memory message) {
+        bool found = false;
         for (uint256 i = 0; i < messages[msg.sender].length; i++) {
-            bytes32 messageId = messages[msg.sender][i];
-            Message memory message = vault[msg.sender][messageId];
-            unlockedMessages[i] = message.encryptedMessage;
+            if (messages[msg.sender][i] == _messageId) {
+                found = true;
+                break;
+            }
         }
-        return unlockedMessages;
+        if (found) return vault[msg.sender][_messageId].encryptedMessage;
     }
 
     /**
@@ -253,11 +249,5 @@ contract TimeLockr is Ownable {
                 break;
             }
         }
-    }
-
-    receive() external payable {}
-
-    fallback() external payable {
-        payable(owner()).transfer(msg.value);
     }
 }
